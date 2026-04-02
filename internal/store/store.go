@@ -21,5 +21,27 @@ func now()string{return time.Now().UTC().Format(time.RFC3339)}
 func(d *DB)Create(e *Feedback)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO feedback(id,title,body,author,category,votes,status,tags,created_at)VALUES(?,?,?,?,?,?,?,?,?)`,e.ID,e.Title,e.Body,e.Author,e.Category,e.Votes,e.Status,e.Tags,e.CreatedAt);return err}
 func(d *DB)Get(id string)*Feedback{var e Feedback;if d.db.QueryRow(`SELECT id,title,body,author,category,votes,status,tags,created_at FROM feedback WHERE id=?`,id).Scan(&e.ID,&e.Title,&e.Body,&e.Author,&e.Category,&e.Votes,&e.Status,&e.Tags,&e.CreatedAt)!=nil{return nil};return &e}
 func(d *DB)List()[]Feedback{rows,_:=d.db.Query(`SELECT id,title,body,author,category,votes,status,tags,created_at FROM feedback ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []Feedback;for rows.Next(){var e Feedback;rows.Scan(&e.ID,&e.Title,&e.Body,&e.Author,&e.Category,&e.Votes,&e.Status,&e.Tags,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Update(e *Feedback)error{_,err:=d.db.Exec(`UPDATE feedback SET title=?,body=?,author=?,category=?,votes=?,status=?,tags=? WHERE id=?`,e.Title,e.Body,e.Author,e.Category,e.Votes,e.Status,e.Tags,e.ID);return err}
 func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM feedback WHERE id=?`,id);return err}
 func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM feedback`).Scan(&n);return n}
+
+func(d *DB)Search(q string, filters map[string]string)[]Feedback{
+    where:="1=1"
+    args:=[]any{}
+    if q!=""{
+        where+=" AND (title LIKE ? OR body LIKE ?)"
+        args=append(args,"%"+q+"%");args=append(args,"%"+q+"%");
+    }
+    if v,ok:=filters["category"];ok&&v!=""{where+=" AND category=?";args=append(args,v)}
+    if v,ok:=filters["status"];ok&&v!=""{where+=" AND status=?";args=append(args,v)}
+    rows,_:=d.db.Query(`SELECT id,title,body,author,category,votes,status,tags,created_at FROM feedback WHERE `+where+` ORDER BY created_at DESC`,args...)
+    if rows==nil{return nil};defer rows.Close()
+    var o []Feedback;for rows.Next(){var e Feedback;rows.Scan(&e.ID,&e.Title,&e.Body,&e.Author,&e.Category,&e.Votes,&e.Status,&e.Tags,&e.CreatedAt);o=append(o,e)};return o
+}
+
+func(d *DB)Stats()map[string]any{
+    m:=map[string]any{"total":d.Count()}
+    rows,_:=d.db.Query(`SELECT status,COUNT(*) FROM feedback GROUP BY status`)
+    if rows!=nil{defer rows.Close();by:=map[string]int{};for rows.Next(){var s string;var c int;rows.Scan(&s,&c);by[s]=c};m["by_status"]=by}
+    return m
+}
